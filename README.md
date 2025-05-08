@@ -27,7 +27,7 @@ End-user could:
 
 ### 2. Predict Quantity Sold with RandomForestRegressor.
 
-I got 99.99% prediction accuracy on training set and 99.98% on testing set. We get the predicted quantity with the historical discount. After that, we want to predict the quantity sold when we change the discount.
+I got 99.98% prediction accuracy on training set and 99.97% on testing set. We get the predicted quantity with the historical discount. After that, we want to predict the quantity sold when we change the discount.
    
 ### 3. Build discount optimization
   - using minimize() function from scipy to find the discount that maximizes profit. Since we want to maximize profit, we convert Maximize profit to Minimize (–profit)
