@@ -16,11 +16,11 @@ End-user could:
 I also applied customer segmentation to segment all wholesalers into 3 clusters, and here are my findings:
 
 ### **Cluster 0**
+low sales, inconsistent revenue, indicating **small to medium-scale buyers**
 
 before applying discount optimization:
-1. low sales, inconsistent revenue, indicating **small to medium-scale buyers**
-2. some transactions are poorly priced leads to negative profit margin
-3. low discounts, but there are huge discounts = 51% for such small sales
+1. some transactions are poorly priced leads to negative profit margin
+2. low discounts, but there are huge discounts = 51% for such small sales
 
 after applying discount optimization:
 1. discounts decreased slightly (mean: 4% → 2%)
@@ -28,11 +28,11 @@ after applying discount optimization:
 3. for this cluster, the model reduces discounts without hurting sales volume significantly and boosts profit, suggesting optimal margin management
 
 ### **Cluster 1**
+high sales, massive and consistent revenue and profit, around 79M and 4M respectively, indicating **large wholesalers**
 
 before applying discount optimization:
-1. high sales, massive and consistent revenue and profit, around 79M and 4M respectively, indicating **large wholesalers**
-2. moderate discount, some don't get a discount
-3. There are cases a wholesaler doesn't get a discount, but the minimum purchase is still high ~36.000 pcs
+1. moderate discount, some don't get a discount
+2. There are cases a wholesaler doesn't get a discount, but the minimum purchase is still high ~36.000 pcs
 
 after applying discount optimization:
 1. discounts are already optimized (14%), and further discounting doesn’t help (past discount & optimized discount are same)
@@ -44,11 +44,11 @@ after applying discount optimization:
 4. this cluster seems like already in the maximum efficiency. Trying further optimization doesn't hurt, and might need further discussion regarding the amount of discount should be given to wholesalers in this cluster
 
 ### **Cluster 2**
+Total revenue is around 22M and consistent, indicating **mid-volume buyers**
 
 before applying discount optimization:
-1. Total revenue is around 22M and consistent, indicating **mid-volume buyers**
-2. Has the highest discount % average  among all clusters, under 75% of data reach almost 11% discount
-3. This cluster indicates that discount is needed in order to drive more sales
+1. has the highest discount % average  among all clusters, under 75% of data reach almost 11% discount
+2. his cluster indicates that discount is needed in order to drive more sales
 
 after applying discount optimization:
 1. mall quantity drop (~300 units), but massive profit gain: ~30% increase
