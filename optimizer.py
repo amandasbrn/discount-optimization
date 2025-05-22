@@ -61,7 +61,7 @@ class discountOptimizer(object):
         
     
     def modeling(self):
-        drop_col = ['Product_Description', 'BOSnetszUomId', 'BOSnetdecUom', 'decUomConversion1', 'decUomConversion2','is_conversion_equal', 'Price_Difference', 'Product_Desc', 'PO_ID','Wholesaler_ID','Product_ID','depoid', 'Depo_Prod_Unique_ID', 'Discount_Type','Nama_Depo', 'Transaction_Date','Convert_to_box', 'unique_ID', 'Product_Nickname', 'Year_Transaction', 'Profit_Margin_%', 'Profit_Per_Unit', 'Final_Price_New']
+        drop_col = ['Product_Description', 'BOSnetszUomId', 'BOSnetdecUom', 'decUomConversion1', 'decUomConversion2','is_conversion_equal','Product_Desc', 'PO_ID','Wholesaler_ID','Product_ID','depoid', 'Depo_Prod_Unique_ID', 'Discount_Type','Nama_Depo', 'Transaction_Date','Convert_to_box', 'unique_ID', 'Product_Nickname', 'Profit_Margin_%', 'Profit_Per_Unit', 'Final_Price_New','Total_Revenue_New']
         target = ['Quantity_Sold']
         X = self.data_ready.drop(drop_col+target,axis=1)
         y = self.data_ready[target]
@@ -154,16 +154,11 @@ class discountOptimizer(object):
                 features['discount_pct'] = opt_disc
                 predicted_quantity = intercept + sum(coef[k] * features[k] for k in coef)
 
-                optimized_discount_amt = base_price * opt_disc
-                new_final_price = base_price - optimized_discount_amt
-                profit_margin_pct = (new_final_price - cost) / new_final_price
-                profit_per_unit = new_final_price - cost
-                total_profit = profit_per_unit * predicted_quantity
-
                 past_price = group['Final_Price_New'].iloc[0]
                 past_discount = group['discount_pct'].iloc[0]
                 past_qty = group['Quantity_Sold'].iloc[0]
                 past_profit = group['Total_Profit'].iloc[0]
+                past_profit_margin = group['Profit_Margin_%'].iloc[0]
 
                 results.append({
                     'Wholesaler_ID': wholesaler_id,
@@ -171,16 +166,10 @@ class discountOptimizer(object):
                     'past_price': past_price,
                     'past_discount': past_discount,
                     'past_qty': past_qty,
-                    'past_profit': past_profit,
-                    'optimized_discount': opt_disc,
-                    'optimized_discount_amt': optimized_discount_amt,
-                    'opt_predicted_quantity': predicted_quantity,
-                    'opt_predicted_profit': total_profit,
-                    'new_final_price': new_final_price
+                    'past_profit':past_profit,
+                    'past_profit_margin':past_profit_margin,
+                    'optimized_discount': opt_disc
                 })
-
-            else:
-                print(f"Optimization failed for {key}: {opt_result.message}")
 
         self.optimized_df = pd.DataFrame(results)
         return self.optimized_df
@@ -247,8 +236,8 @@ class discountOptimizer(object):
         data['discount_pct'] = discount
 
         # calculate discount amount & final price manually because of new discount %
-        data['Discount_Amount'] = data['Base_Price'] * data['discount_pct']
-        data['Final_Price_New'] = data['Base_Price'] - data['Discount_Amount']
+        data['Discount_Amount'] = (data['Base_Price'] * data['Quantity_Sold']) * data['discount_pct']
+        data['Final_Price_New'] = ((data['Base_Price'] * data['Quantity_Sold']) - data['Discount_Amount']) / data['Quantity_Sold']
         data['Profit_Margin_%'] = (data['Final_Price_New'] - data['modal_per_pcs_inc_PPN']) / data['Final_Price_New']
         
         # Apply encodings
@@ -273,31 +262,29 @@ class discountOptimizer(object):
         'Wholesaler_ID', 'PO_ID', 'Product_ID', 'Product_Desc',
         'Base_Price',
         'Past_Quantity_Sold', 'Past_Revenue', 'Past_Profit',
-        'New_Discount', 'Predicted_Quantity', 'Predicted_Revenue', 'Predicted_Profit', 'Profit_Margin_%'
+        'New_Discount', 'Discount_Amount','Predicted_Quantity', 'Predicted_Revenue', 'Predicted_Profit', 'Profit_Margin_%'
         ]
         return data[show_cols]
     
-    def compare_optimized(self, wholesaler_id, product_id):
-        # Filter to the specific row
-        row = self.optimized_df[
-            (self.optimized_df['Wholesaler_ID'] == wholesaler_id) & 
-            (self.optimized_df['Product_ID'] == product_id)
-        ]
+    def compare_optimized(self, data):
+        results = []
 
-        if row.empty:
-            return None  # Or handle as appropriate
+        for i in range(data.shape[0]):
+            row = data.iloc[i]
+            wholesaler_id = row['Wholesaler_ID']
+            product_id = row['Product_ID']
+            optim_disc = row['optimized_discount']
 
-        row = row.iloc[0]  # Convert single-row DataFrame to Series
-        optim_disc = row['optimized_discount']
+            subset = self.data_ready[
+                (self.data_ready['Wholesaler_ID'] == wholesaler_id) &
+                (self.data_ready['Product_ID'] == product_id)
+            ]
 
-        subset = self.data_ready[
-            (self.data_ready['Wholesaler_ID'] == wholesaler_id) &
-            (self.data_ready['Product_ID'] == product_id)
-        ]
+            if subset.empty:
+                continue
 
-        if not subset.empty:
             res = self.disc_simulation(
-                data=subset,
+                data=subset.copy(),
                 drop_col=self.drop_col,
                 target=self.target,
                 discount=optim_disc,
@@ -305,29 +292,40 @@ class discountOptimizer(object):
                 model=self.model
             )
 
-            rf_predicted_quantity = res['Predicted_Quantity'].iloc[0]
-            rf_predicted_profit = res['Predicted_Profit'].iloc[0]
-            rf_predicted_profit_margin = res['Profit_Margin_%'].iloc[0]
+            if res is None or res.empty:
+                continue
 
-            past_profit = row['past_profit']
+            predicted_quantity = res['Predicted_Quantity'].iloc[0]
+            base_price = subset['Base_Price'].iloc[-1]
+            cost = subset['modal_per_pcs_inc_PPN'].iloc[-1]
+            past_discount_amt = subset['Discount_Amount'].iloc[-1]
+
+            optimized_discount_amt = (base_price * predicted_quantity) * optim_disc
+            new_final_price = (base_price * predicted_quantity - optimized_discount_amt) / predicted_quantity
+            profit_per_unit = new_final_price - cost
+            profit_margin_pct = profit_per_unit / new_final_price if new_final_price != 0 else 0
+            total_profit = profit_per_unit * predicted_quantity
+
             past_price = row['past_price']
-            cost = subset['modal_per_pcs_inc_PPN'].iloc[0]
-            past_profit_margin = (past_price - cost) / past_price
+            past_profit = row['past_profit']
+            past_discount = row['past_discount']
+            past_profit_margin = (past_price - cost) / past_price if past_price != 0 else 0
 
-            discount_diff = (row['optimized_discount'] - row['past_discount']) / row['past_discount']
-            profit_diff = (rf_predicted_profit - row['past_profit']) / row['past_profit']
+            discount_diff = (optim_disc - past_discount) / past_discount if past_discount != 0 else 0
+            profit_diff = (total_profit - past_profit) / past_profit if past_profit != 0 else 0
 
-            result = {
+            results.append({
                 **row.to_dict(),
-                'rf_predicted_quantity': rf_predicted_quantity,
-                'rf_predicted_profit': rf_predicted_profit,
-                'rf_predicted_profit_margin': rf_predicted_profit_margin,
                 'past_profit_margin': past_profit_margin,
-                'discount_diff': discount_diff,
-                'profit_diff': profit_diff
-            }
+                'past_discount_amt': past_discount_amt,
+                'predicted_quantity': predicted_quantity,
+                'predicted_profit': total_profit,
+                'predicted_profit_margin': profit_margin_pct,
+                'optimized_discount_amt': optimized_discount_amt,
+                'optimized_price': new_final_price
+            })
 
-            self.rf_optimized_df = pd.DataFrame([result])
-            return self.rf_optimized_df
-        
-        return None
+        self.rf_optimized_df = pd.DataFrame(results)
+        return self.rf_optimized_df if not self.rf_optimized_df.empty else None
+
+
