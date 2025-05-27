@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
 from optim_backend import discountOptimV2 
 
@@ -11,26 +12,32 @@ model = joblib.load('trained_pipeline.joblib')
 
 product_mapping = data[['Product_ID', 'Product_Desc']].drop_duplicates().set_index('Product_ID')['Product_Desc'].to_dict()
 wholesaler_ids = sorted(data['Wholesaler_ID'].unique())
+depo_ids = sorted(data['Kode_Depo'].unique())
 
 tab1, tab2, tab3, tab4 = st.tabs(["Discount Simulation", "Discount Structure", "Simulation History", "Check Discount"])
 
 with tab1:
 
-    '''
-        Objective: discount simulation
-        this is where user can get the most optimal discount based on their own simulation
+    # '''
+    #     Objective: discount simulation
+    #     this is where user can get the most optimal discount based on their own simulation
 
-    '''
+    # '''
 
     #st.dataframe(data.head())
     # ----------------- USER INPUT ----------------------
     st.markdown("*Generate the most optimal discount based on the simulation here.*")
-    # input wholesaler
-    selected_wholesaler = str(st.selectbox("Select Wholesaler", wholesaler_ids, key='wholesaler_optim'))
+    # input depo
+    selected_depo = str(st.selectbox("Select Depo", depo_ids, key='depo_optim'))
+
+    # input wholesaler based on depo
+    wholesaler_depo = data[data['Kode_Depo'] == selected_depo][['Wholesaler_ID']].drop_duplicates()
+    selected_wholesaler = str(st.selectbox("Select Wholesaler", wholesaler_depo, key='wholesaler_optim'))
+
+    # input product based on wholesaler
     products_for_wholesaler = data[data['Wholesaler_ID'] == selected_wholesaler][['Product_ID', 'Product_Desc']].drop_duplicates()
     product_display_to_id = {f"{row.Product_Desc} ({row.Product_ID})": row.Product_ID for _, row in products_for_wholesaler.iterrows()}
     
-    # input product
     selected_display = str(st.selectbox("Select Product", sorted(product_display_to_id.keys()),key='product_optim'))
     selected_product = product_display_to_id[selected_display]  # this will give the actual Product_ID
 
@@ -38,7 +45,8 @@ with tab1:
 
     # other inputs
     user_base_price = int(st.number_input("Enter Base Price:", min_value=1, value=1000))
-    st.caption(f"Past base price: {', '.join([str(round(x, 2)) for x in subset_data['Base_Price'].unique()])}")
+    unique_base = sorted(subset_data['Base_Price'].round(2).unique())
+    st.caption(f"Past base price: range from {min(unique_base)} to {max(unique_base)}")
 
     user_ppn = int(st.number_input("Enter PPN:", min_value=1, value=1000))
     unique_ppn = sorted(subset_data['PPN'].round(2).unique())
@@ -113,21 +121,27 @@ with tab1:
 
 
 with tab2:
-    '''
-        Objective: discount structure
-        This stores the most optimal discount for historical data, for each wholesaler and product.
-        User can get summary & recommendations
-    '''
+    # '''
+    #     Objective: discount structure
+    #     This stores the most optimal discount for historical data, for each wholesaler and product.
+    #     User can get summary & recommendations
+    # '''
+
     # ----------------------------------------
     # USER INPUT
     # ----------------------------------------
+    st.markdown("*Generate the most optimal discount based on the simulation here.*")
+    # input depo
+    selected_depo = str(st.selectbox("Select Depo", depo_ids, key='depo_str'))
 
-    # input wholesaler
-    selected_wholesaler = str(st.selectbox("Select Wholesaler", wholesaler_ids, key='wholesaler_str'))
+    # input wholesaler based on depo
+    wholesaler_depo = data[data['Kode_Depo'] == selected_depo][['Wholesaler_ID']].drop_duplicates()
+    selected_wholesaler = str(st.selectbox("Select Wholesaler", wholesaler_depo, key='wholesaler_str'))
+
+    # input product based on wholesaler
     products_for_wholesaler = data[data['Wholesaler_ID'] == selected_wholesaler][['Product_ID', 'Product_Desc']].drop_duplicates()
     product_display_to_id = {f"{row.Product_Desc} ({row.Product_ID})": row.Product_ID for _, row in products_for_wholesaler.iterrows()}
     
-    # input product
     selected_display = str(st.selectbox("Select Product", sorted(product_display_to_id.keys()),key='product_str'))
     selected_product = product_display_to_id[selected_display]  # this will give the actual Product_ID
 
@@ -137,79 +151,35 @@ with tab2:
 
     optimized_df = pd.read_csv('optimized_df.csv')
     optimized_df['Product_ID'] = optimized_df['Product_ID'].astype('str')
-    optimized_df['price_elasticity'] = optimized_df.apply(
-    lambda row: optimizer.calculate_price_elasticity(
-        original_price=row['past_price'],
-        original_quantity=row['past_qty'],
-        optimized_price=row['optimal_final_price'],
-        optimized_quantity=row['opt_predicted_quantity']
-    ),
-    axis=1
-    )
-    optimized_df['price_elasticity'] = optimized_df['price_elasticity'].clip(-1, 1)
-    optimized_df['price_elasticity'] = optimized_df['price_elasticity'].fillna(0)
 
     if st.button('🔍 Show discount structure', type='primary'):
         opt_subset_data = optimized_df[(optimized_df['Wholesaler_ID']==selected_wholesaler) & (optimized_df['Product_ID']==selected_product)]
-        opt_subset_data = opt_subset_data.drop('unique_ID',axis=1)
+        opt_subset_data = opt_subset_data.drop(['unique_ID','optimized_discount_str'],axis=1)
 
         clusters = opt_subset_data['Cluster'].unique()
-        len_cluster = len(clusters)
         texts = []
-        if len_cluster > 1:
-            texts.append("This wholesaler have different behavior towards this product")
-            for cluster in clusters:
-                if cluster == 0:
-                    texts.append("tends to place orders with relatively lower quantities")
-                elif cluster == 1:
-                    texts.append("puts in large quantity orders")
-                elif cluster == 2:
-                    texts.append("order a moderate amount")
-                else:
-                    texts.append("❓ behavior cluster is undefined")
-        elif len_cluster == 1:
-            if clusters[0] == 0:
-                texts.append("tends to place orders with relatively lower quantities")
-            elif clusters[0] == 1:
-                texts.append("puts in large quantity orders")
-            elif clusters[0] == 2:
-                texts.append("order a moderate amount — consistent and steady")
-            else:
-                texts.append("❓ behavior cluster is undefined")
 
-        avg_elasticity = opt_subset_data['price_elasticity'].mean()
-
-        if avg_elasticity < 0:
-            elasticity_text = "🟢 This wholesaler is **sensitive to price drops** for this product."
-            elasticity_action = "💡 You can **experiment with small discount changes** to drive higher sales volume."
-        elif avg_elasticity == 0:
-            elasticity_text = "⚪ This wholesaler is **not affected by price changes** for this product."
-            elasticity_action = "💡 Focus on **non-price factors** like delivery time, service quality, or bundling."
+        if clusters[0] == 0:
+            texts.append("📦 This wholesaler typically places low-volume orders. Their purchasing behavior is steady but modest.")
+        elif clusters[0] == 1:
+            texts.append("🚚 This wholesaler is a relatively moderate volume buyers. They contribute significantly to revenue but operate on thinner margins.")
+        elif clusters[0] == 2:
+            texts.append("🏆 This wholesaler may be a strategic or key account that consistently place very large orders. They receive discounts regularly and are vital for long-term growth.")
         else:
-            elasticity_text = "🔴 This wholesaler is **less likely to buy more even if prices drop**."
-            elasticity_action = "💡 Avoid over-discounting. Instead, try **product education or differentiation strategies**."
+            texts.append("❓ This wholesaler's behavior does not align with known clusters and may require further analysis.")
 
-        
-        # cluster = opt_subset_data['Cluster'].iloc[0]
+        elasticity_dominant = np.sign(opt_subset_data['price_elasticity']).mode()[0]
 
-        # if cluster == 0:
-        #     text = "📦 for this product, this wholesaler places orders with relatively lower quantities"
-        # elif cluster == 1:
-        #     text = "🚛 for this product, this wholesaler puts in large quantity orders"
-        # elif cluster == 2:
-        #     text = " 🤝 for this product, this wholesaler tends to order a moderate amount — consistent and steady"
-        # else:
-        #     text = "Wholesaler-product behavior cluster is undefined ❓."
+        if elasticity_dominant < 0:
+            elasticity_text = "🟢 For this product, this wholesaler is **sensitive to price changes**."
+            elasticity_action = "💡 You can **experiment with small discount changes** to drive higher sales volume."
+        elif elasticity_dominant > 0:
+            elasticity_text = "🔴 For this product, this wholesaler shows a sign that lower prices may not increase demand."
+            elasticity_action = "💡 Consider focusing on **value-added services, exclusivity, or loyalty incentives** instead of discounts."
+        else:
+            elasticity_text = "⚪ For this product, this wholesaler is **not affected by price changes**."
+            elasticity_action = "💡 Focus on **non-price factors** like delivery time, service quality, or bundling."
 
-        # elasticity = opt_subset_data['price_elasticity'].iloc[0]
-        # if elasticity < 0:
-        #     text_e = "🟢 this wholesaler is **sensitive to price drops** for this product. Lowering the price is likely to increase their purchase quantity."
-        # elif elasticity == 0:
-        #     text_e = "⚪ this wholesaler is **not affected by price changes** for this product. Discounts may not influence how much they buy."
-        # else:
-        #     text_e = "🔴 this wholesaler is **less likely to buy more even if prices drop** on this product. Offering discounts might not increase sales volume."
-
-        
         st.markdown("#### **📊 Summary for selected Wholesaler & Product**")
         st.markdown(f"""
                     **Wholesaler ID**: {opt_subset_data['Wholesaler_ID'].iloc[0]}
@@ -217,8 +187,8 @@ with tab2:
                     **Product ID:** {opt_subset_data['Product_ID'].iloc[0]}
 
                     """)
-        st.markdown("**For this product, this wholesaler shows some behaviors:**")
-        st.markdown("📦 " + ", ".join(texts))
+        st.markdown("**This wholesaler shows some behaviors:**")
+        st.markdown(", ".join(texts))
         st.markdown(elasticity_text)
         st.markdown("**Recommendations for this wholesaler & product:**")
         st.markdown(elasticity_action)
@@ -228,22 +198,22 @@ with tab2:
 
 with tab3:
 
-    '''
-        Objective: discount simulation history
-        After doing simulation on tab1, the input goes here
+    # '''
+    #     Objective: discount simulation history
+    #     After doing simulation on tab1, the input goes here
 
-    '''
+    # '''
 
     st.dataframe(st.session_state.results_df)
 
 with tab4:
 
-    '''
-        Objective: build their own discount
-        This is where user can get quantity and profit prediction based on their base price, PPN, cost, and discount input.
-        User can freely test their desired discount here.
+    # '''
+    #     Objective: build their own discount
+    #     This is where user can get quantity and profit prediction based on their base price, PPN, cost, and discount input.
+    #     User can freely test their desired discount here.
 
-    '''
+    # '''
 
     st.markdown("*Build simulation of your own discount and price here.*")
     # input wholesaler

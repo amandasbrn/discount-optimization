@@ -18,8 +18,8 @@ class discountOptimV2(object):
         data_purchased = pd.read_csv(self.filepath)
         data_purchased['Product_ID'] = data_purchased['Product_ID'].astype('str')
         self.data_purchased = data_purchased
-        self.data_wholesaler = data_purchased.drop_duplicates(subset=['Wholesaler_Product_ID'])[
-            ['Wholesaler_ID','Product_ID','Wholesaler_Product_ID','Cluster']]
+        # self.data_wholesaler = data_purchased.drop_duplicates(subset=['Wholesaler_Product_ID'])[
+        #     ['Wholesaler_ID','Product_ID','Wholesaler_Product_ID','Cluster']]
 
     def input_new_data(self, wholesaler_id, product_id, base_price, ppn, cost, discount_pct):
         final_price = base_price * (1 - discount_pct)
@@ -40,7 +40,7 @@ class discountOptimV2(object):
         }])
     
     def get_predict_quantity(self, trained_pipeline, data):
-        data = data.merge(self.data_wholesaler[['Wholesaler_Product_ID','Cluster']], on='Wholesaler_Product_ID', how='left')
+        data = data.merge(self.data_purchased[['Wholesaler_Product_ID','Cluster']], on='Wholesaler_Product_ID', how='left')
         X_pred = data.drop(['Wholesaler_ID', 'Product_ID'], axis=1)
         predicted_quantity = trained_pipeline.predict(X_pred)[0]
         return max(0, predicted_quantity)
@@ -75,13 +75,14 @@ class discountOptimV2(object):
     def optimization(self, wholesaler_id, product_id, base_price, ppn, cost, trained_pipeline):
         subset_data_history = self.data_purchased[(self.data_purchased['Wholesaler_ID']==wholesaler_id) & (self.data_purchased['Product_ID']==product_id)]
         subset_data_history = subset_data_history.sort_values(by="Transaction_Date",ascending=True)
+
         latest_data = subset_data_history.iloc[-1]
         initial_discount = subset_data_history['discount_pct'].mean()
 
         latest_past_discount = latest_data['discount_pct']
-        latest_past_final_price = latest_data['Final_Price_New']
-        latest_qty = latest_data['Quantity_Sold']
-        latest_profit = latest_data['Total_Profit']
+        latest_past_final_price = subset_data_history['Final_Price_New'].mean()
+        latest_qty = subset_data_history['Quantity_Sold'].median()
+        latest_profit = subset_data_history['Total_Profit'].median()
         latest_profit_margin = latest_data['Profit_Margin_%']
 
 
